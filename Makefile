@@ -37,6 +37,7 @@ VCS_URL := https://$(PACKAGE)
 
 TOOLS_MOD_DIR := ./tools
 TOOLS_DIR := $(abspath ./.tools)
+CRDS_DIR := $(abspath ./crds)
 
 ifeq ($(OS),Windows_NT)
 	GO_BUILD_MODE = default
@@ -62,6 +63,10 @@ $(TOOLS_DIR)/misspell: $(TOOLS_MOD_DIR)/go.mod $(TOOLS_MOD_DIR)/go.sum $(TOOLS_M
 	cd $(TOOLS_MOD_DIR) && \
 	go build -o $(TOOLS_DIR)/misspell github.com/client9/misspell/cmd/misspell
 
+$(TOOLS_DIR)/controller-gen: $(TOOLS_MOD_DIR)/go.mod $(TOOLS_MOD_DIR)/go.sum $(TOOLS_MOD_DIR)/tools.go
+	cd $(TOOLS_MOD_DIR) && \
+	go build -o $(TOOLS_DIR)/controller-gen sigs.k8s.io/controller-tools/cmd/controller-gen
+
 .PHONY: precommit
 precommit: build test lint
 
@@ -81,15 +86,15 @@ lint: $(TOOLS_DIR)/golangci-lint $(TOOLS_DIR)/misspell
 
 .PHONY: print-v-webhook
 print-v-webhook:
-	@echo $(DOCKER_RELEASE_TAG_WEBHOOK) 
+	@echo $(DOCKER_RELEASE_TAG_WEBHOOK)
 
 .PHONY: print-v-controller
 print-v-controller:
-	@echo $(DOCKER_RELEASE_TAG_CONTROLLER) 
+	@echo $(DOCKER_RELEASE_TAG_CONTROLLER)
 
 .PHONY: print-v-vaultenv
 print-v-vaultenv:
-	@echo $(DOCKER_RELEASE_TAG_VAULTENV) 
+	@echo $(DOCKER_RELEASE_TAG_VAULTENV)
 
 .PHONY: tag-all
 tag-all: tag-webhook tag-controller tag-vaultenv
@@ -137,6 +142,16 @@ codegen:
 	rm -rf ${GOPATH}/src/k8s.io/code-generator
 	git clone --depth 1 --branch $(KUBERNETES_DEP_VERSION) git@github.com:kubernetes/code-generator.git ${GOPATH}/src/k8s.io/code-generator
 	./hack/update-codegen.sh
+
+.PHONY: crdgen
+crdgen: $(TOOLS_DIR)/controller-gen
+	$(TOOLS_DIR)/controller-gen \
+		crd:crdVersions=v1,preserveUnknownFields=false,trivialVersions=true \
+  		paths=./pkg/k8s/apis/azurekeyvault/v1alpha1/... \
+  		paths=./pkg/k8s/apis/azurekeyvault/v1/... \
+  		paths=./pkg/k8s/apis/azurekeyvault/v2beta1/... \
+  		output:crd:artifacts:config=./crds
+	mv $(CRDS_DIR)/keyvault.azure.spv.no_azurekeyvaultsecrets.yaml $(CRDS_DIR)/AzureKeyVaultSecret.yaml
 
 .PHONY: test
 test: fmtcheck
@@ -274,15 +289,15 @@ pull-all: pull-webhook pull-controller pull-vaultenv
 
 .PHONY: pull-webhook
 pull-webhook:
-	docker pull $(DOCKER_INTERNAL_REG)/$(DOCKER_WEBHOOK_IMAGE):$(DOCKER_INTERNAL_TAG) 
+	docker pull $(DOCKER_INTERNAL_REG)/$(DOCKER_WEBHOOK_IMAGE):$(DOCKER_INTERNAL_TAG)
 
 .PHONY: pull-controller
 pull-controller:
-	docker pull $(DOCKER_INTERNAL_REG)/$(DOCKER_CONTROLLER_IMAGE):$(DOCKER_INTERNAL_TAG) 
+	docker pull $(DOCKER_INTERNAL_REG)/$(DOCKER_CONTROLLER_IMAGE):$(DOCKER_INTERNAL_TAG)
 
 .PHONY: pull-vaultenv
 pull-vaultenv:
-	docker pull $(DOCKER_INTERNAL_REG)/$(DOCKER_VAULTENV_IMAGE):$(DOCKER_INTERNAL_TAG) 
+	docker pull $(DOCKER_INTERNAL_REG)/$(DOCKER_VAULTENV_IMAGE):$(DOCKER_INTERNAL_TAG)
 
 .PHONY: release
 release: release-controller release-webhook release-vaultenv
